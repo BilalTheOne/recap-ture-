@@ -32,7 +32,17 @@ def cluster_speakers(
     """
     vectors = np.array([e["embedding"] for e in embeddings])
 
+    if len(vectors) < 2:
+        # AgglomerativeClustering requires at least 2 samples; with 0 or 1
+        # clean segments there's nothing to cluster, so just assign them
+        # directly to Speaker_1.
+        return [
+            {"start": segment["start"], "end": segment["end"], "speaker": "Speaker_1"}
+            for segment in segments
+        ]
+
     if n_speakers is not None:
+        n_speakers = min(n_speakers, len(vectors))
         clustering = AgglomerativeClustering(n_clusters=n_speakers)
     else:
         clustering = AgglomerativeClustering(
