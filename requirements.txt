@@ -1,5 +1,5 @@
-torch==2.8.0
-torchaudio==2.8.0
+torch==2.5.1
+torchaudio==2.5.1
 silero-vad
 speechbrain
 pyannote.audio>=3.1,<4.0
