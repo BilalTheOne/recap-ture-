@@ -17,6 +17,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import pipeline
@@ -28,6 +29,7 @@ VOICEPRINTS_DIR = "voiceprints"
 JOBS_DIR = Path("output/web")
 
 app = FastAPI(title="Speaker Attribution Dashboard")
+app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
@@ -40,6 +42,7 @@ class Job:
     speaker_timeline: list = field(default_factory=list)
     renames: dict = field(default_factory=dict)
     final_lines: list = field(default_factory=list)
+    final_timeline: list = field(default_factory=list)
     error: str | None = None
     resume_event: threading.Event = field(default_factory=threading.Event)
 
@@ -77,6 +80,8 @@ def _run_job(
                     speaker_timeline = pipeline.apply_cluster_renames(speaker_timeline, job.renames)
             else:
                 speaker_timeline = merge_consecutive_segments(speaker_timeline)
+
+        job.final_timeline = speaker_timeline
 
         job.status = "finalizing"
         transcript_lines = pipeline.get_transcript_lines(wav_path, transcript_path, whisper_model)
@@ -147,7 +152,9 @@ def job_status(request: Request, job_id: str):
 
     if job.status == "done":
         return templates.TemplateResponse(
-            request, "result.html", {"job_id": job_id, "lines": job.final_lines}
+            request,
+            "result.html",
+            {"job_id": job_id, "lines": job.final_lines, "timeline": job.final_timeline},
         )
 
     if job.status == "error":

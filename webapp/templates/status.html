@@ -1,23 +1,21 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Processing — {{ job_id }}</title>
-  {% if status != "error" %}
-  <meta http-equiv="refresh" content="3">
-  {% endif %}
-  <style>
-    body { font-family: sans-serif; max-width: 640px; margin: 40px auto; }
-    .error { color: #b00020; white-space: pre-wrap; }
-  </style>
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}Processing — {{ job_id }}{% endblock %}
+{% block head %}
+{% if status != "error" %}
+<meta http-equiv="refresh" content="3">
+{% endif %}
+{% endblock %}
+{% block content %}
+<div class="card">
   <h1>Job {{ job_id }}</h1>
   {% if status == "error" %}
-    <p class="error">Failed: {{ error }}</p>
+    <h2>Failed</h2>
+    <div class="error-box">{{ error }}</div>
   {% else %}
-    <p>Status: <strong>{{ status }}</strong> — this page refreshes automatically.</p>
+    <div class="spinner"></div>
+    <p>Status: <strong>{{ status }}</strong></p>
+    <p class="muted">This page refreshes automatically every few seconds.</p>
   {% endif %}
   <p><a href="/">Start another</a></p>
-</body>
-</html>
+</div>
+{% endblock %}

@@ -1,17 +1,9 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Speaker Attribution Dashboard</title>
-  <style>
-    body { font-family: sans-serif; max-width: 640px; margin: 40px auto; }
-    label { display: block; margin-top: 16px; font-weight: bold; }
-    input, select { width: 100%; padding: 6px; margin-top: 4px; box-sizing: border-box; }
-    button { margin-top: 24px; padding: 10px 20px; }
-  </style>
-</head>
-<body>
-  <h1>Speaker Attribution Dashboard</h1>
+{% extends "base.html" %}
+{% block title %}Upload — Recap-ture{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Process a recording</h1>
+  <p class="muted">Upload a recording to detect speakers, identify known voices, and produce a labeled transcript.</p>
   <form action="/jobs" method="post" enctype="multipart/form-data">
     <label>Recording (mp4 / wav / m4a / mp3)</label>
     <input type="file" name="recording" required>
@@ -22,10 +14,10 @@
     <label>Known number of speakers (recommended — leave blank to estimate, which is unreliable)</label>
     <input type="number" name="speakers" min="1">
 
-    <label>
-      <input type="checkbox" name="use_voiceprints" value="true" checked style="width:auto;display:inline;">
-      Identify speakers using voice biometrics (prompts you to name any new voice)
-    </label>
+    <div class="checkbox-row">
+      <input type="checkbox" id="use_voiceprints" name="use_voiceprints" value="true" checked>
+      <label for="use_voiceprints" style="margin:0;">Identify speakers using voice biometrics</label>
+    </div>
 
     <label>Whisper model (only used if no transcript is uploaded)</label>
     <select name="whisper_model">
@@ -38,5 +30,5 @@
 
     <button type="submit">Process recording</button>
   </form>
-</body>
-</html>
+</div>
+{% endblock %}

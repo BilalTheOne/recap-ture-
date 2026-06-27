@@ -1,30 +1,59 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Result — {{ job_id }}</title>
-  <style>
-    body { font-family: sans-serif; max-width: 720px; margin: 40px auto; }
-    .line { margin-bottom: 14px; }
-    .speaker { font-weight: bold; }
-    .downloads a { margin-right: 12px; }
-  </style>
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}Result — {{ job_id }}{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+{% endblock %}
+{% block content %}
+<div class="card">
   <h1>Transcript ready</h1>
-  <p class="downloads">
-    Download:
+  <div class="downloads">
     <a href="/jobs/{{ job_id }}/download/json">JSON</a>
     <a href="/jobs/{{ job_id }}/download/md">Markdown</a>
     <a href="/jobs/{{ job_id }}/download/docx">DOCX</a>
     <a href="/jobs/{{ job_id }}/download/vtt">VTT</a>
-  </p>
-  <hr>
+  </div>
+  <h2>Speaker timeline</h2>
+  <canvas id="timeline" height="160"></canvas>
+</div>
+
+<div class="card">
+  <h2>Transcript</h2>
   {% for line in lines %}
-  <div class="line">
-    <span class="speaker">{{ line.speaker }}:</span> {{ line.text }}
+  <div class="transcript-line">
+    <span class="time">{{ "%02d:%02d"|format((line.start // 60)|int, (line.start % 60)|int) }}</span>
+    <span class="speaker">{{ line.speaker }}:</span>{{ line.text }}
   </div>
   {% endfor %}
-  <p><a href="/">Process another</a></p>
-</body>
-</html>
+</div>
+
+<p><a href="/">Process another</a></p>
+
+<script>
+  const segments = {{ timeline | tojson }};
+  const speakers = [...new Set(segments.map(s => s.speaker))];
+  const palette = ["#6c8cff", "#ff7a7a", "#4cd6a8", "#ffc16c", "#c08cff", "#6cd1ff", "#ff8cd1"];
+  const colorFor = (speaker) => speaker === "Speaker_multiple"
+    ? "#5a6170"
+    : palette[speakers.indexOf(speaker) % palette.length];
+
+  new Chart(document.getElementById("timeline"), {
+    type: "bar",
+    data: {
+      datasets: [{
+        label: "Speech segments",
+        data: segments.map(s => ({ x: [s.start, s.end], y: s.speaker })),
+        backgroundColor: segments.map(s => colorFor(s.speaker)),
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      indexAxis: "y",
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { title: { display: true, text: "Seconds", color: "#9aa1ad" }, ticks: { color: "#9aa1ad" }, grid: { color: "#2c313c" } },
+        y: { type: "category", labels: speakers, ticks: { color: "#9aa1ad" }, grid: { color: "#2c313c" } },
+      },
+    },
+  });
+</script>
+{% endblock %}
