@@ -79,6 +79,13 @@ def run_pipeline(
     whisper_model: str = "base",
     distance_threshold: float = DEFAULT_DISTANCE_THRESHOLD,
 ) -> None:
+    if n_speakers is None:
+        print(
+            "WARNING: --speakers not provided. Estimating speaker count via "
+            "distance-threshold clustering, which has been observed to produce "
+            "wildly wrong speaker counts. Prefer passing --speakers explicitly."
+        )
+
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -151,15 +158,18 @@ def main() -> None:
         "--speakers",
         type=int,
         default=None,
-        help="Known number of speakers. If omitted, the speaker count is "
-        "estimated via distance-threshold clustering, which is less reliable.",
+        help="Known number of speakers (recommended — gives stable, accurate "
+        "clustering). If omitted, speaker count is estimated via "
+        "distance-threshold clustering: EXPERIMENTAL and prone to wildly "
+        "wrong speaker counts, validated to be unreliable in testing.",
     )
     run_parser.add_argument(
         "--distance-threshold",
         type=float,
         default=DEFAULT_DISTANCE_THRESHOLD,
         help="Cosine distance threshold used to estimate speaker count when "
-        "--speakers is omitted (lower = more, smaller clusters)",
+        "--speakers is omitted (lower = more, smaller clusters). No single "
+        "value has been found to work reliably across recordings.",
     )
     run_parser.add_argument(
         "--whisper-model",
