@@ -52,9 +52,10 @@ def identify_clusters(
 
     Returns (relabeled_timeline, cluster_info), where cluster_info maps each
     original cluster label to {"name": matched_name_or_None, "score": float,
-    "embeddings": [[...], ...]}. The raw embeddings are included so unmatched
-    clusters (new, unenrolled speakers) can be enrolled on the spot without
-    re-extracting audio.
+    "embeddings": [[...], ...], "segments": [{"start", "end"}, ...]}. The raw
+    embeddings and their source segment timings are included so unmatched
+    clusters (new, unenrolled speakers) can be enrolled — with playable audio
+    clips — on the spot without re-extracting audio.
     """
     centroids = load_all_centroids(voiceprints_dir)
 
@@ -62,15 +63,24 @@ def identify_clusters(
     embeddings = extract_embeddings(wav_path, identifiable)
 
     by_cluster: dict[str, list[list[float]]] = {}
+    segments_by_cluster: dict[str, list[dict]] = {}
     for segment, embedding in zip(identifiable, embeddings):
         by_cluster.setdefault(segment["speaker"], []).append(embedding["embedding"])
+        segments_by_cluster.setdefault(segment["speaker"], []).append(
+            {"start": segment["start"], "end": segment["end"]}
+        )
 
     cluster_info = {}
     cluster_to_name = {}
     for cluster, vectors in by_cluster.items():
         centroid = np.array(vectors).mean(axis=0)
         name, score = match_embedding(centroid.tolist(), centroids, threshold)
-        cluster_info[cluster] = {"name": name, "score": score, "embeddings": vectors}
+        cluster_info[cluster] = {
+            "name": name,
+            "score": score,
+            "embeddings": vectors,
+            "segments": segments_by_cluster[cluster],
+        }
         if name:
             cluster_to_name[cluster] = name
 

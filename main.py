@@ -29,7 +29,7 @@ from transcript.speaker_map import load_speaker_map
 
 from biometrics.enroll import enroll_from_meeting
 from biometrics.identify import DEFAULT_THRESHOLD
-from biometrics.store import add_embeddings
+from biometrics.store import enroll_segments
 
 
 def run_pipeline(
@@ -77,7 +77,7 @@ def run_pipeline(
                     "Enter a name to enroll this speaker, or press Enter to skip: "
                 ).strip()
                 if name:
-                    add_embeddings(voiceprints_dir, name, info["embeddings"])
+                    enroll_segments(voiceprints_dir, name, wav_path, info["embeddings"], info["segments"])
                     renames[cluster] = name
 
             if renames:

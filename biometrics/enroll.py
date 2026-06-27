@@ -9,7 +9,7 @@ since enrollment requires a known identity.
 
 from diarization.embeddings import extract_embeddings
 
-from biometrics.store import add_embeddings
+from biometrics.store import enroll_segments
 
 _MIN_SEGMENT_DURATION = 1.5  # seconds; very short segments make weak voiceprints
 
@@ -20,7 +20,8 @@ def enroll_from_meeting(
     speaker_map: dict[str, str],
     voiceprints_dir: str,
 ) -> dict[str, int]:
-    """Extract embeddings for each mapped speaker and store them as voiceprints.
+    """Extract embeddings (with playable audio clips) for each mapped speaker
+    and store them as voiceprints.
 
     Returns {name: number_of_segments_enrolled}.
     """
@@ -35,11 +36,13 @@ def enroll_from_meeting(
     embeddings = extract_embeddings(wav_path, enrollable)
 
     by_name: dict[str, list[list[float]]] = {}
+    segments_by_name: dict[str, list[dict]] = {}
     for segment, embedding in zip(enrollable, embeddings):
         name = speaker_map[segment["speaker"]]
         by_name.setdefault(name, []).append(embedding["embedding"])
+        segments_by_name.setdefault(name, []).append(segment)
 
     for name, vectors in by_name.items():
-        add_embeddings(voiceprints_dir, name, vectors)
+        enroll_segments(voiceprints_dir, name, wav_path, vectors, segments_by_name[name])
 
     return {name: len(vectors) for name, vectors in by_name.items()}

@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -25,7 +25,7 @@ from sklearn.decomposition import PCA
 import pipeline
 from diarization.clustering import merge_consecutive_segments
 
-from biometrics.store import add_embeddings, load_all_voiceprints
+from biometrics.store import enroll_segments, load_all_voiceprints, load_voiceprint
 
 VOICEPRINTS_DIR = "voiceprints"
 JOBS_DIR = Path("output/web")
@@ -173,12 +173,13 @@ def job_status(request: Request, job_id: str):
 async def submit_names(request: Request, job_id: str):
     job = jobs[job_id]
     form = await request.form()
+    wav_path = str(job.out_dir / "meeting.wav")
 
     renames = {}
     for cluster, info in job.cluster_info.items():
         name = str(form.get(f"name__{cluster}", "")).strip()
         if name:
-            add_embeddings(VOICEPRINTS_DIR, name, info["embeddings"])
+            enroll_segments(VOICEPRINTS_DIR, name, wav_path, info["embeddings"], info["segments"])
             renames[cluster] = name
 
     job.renames = renames
@@ -217,3 +218,29 @@ def voiceprints_page(request: Request):
         "voiceprints.html",
         {"points": points, "sample_counts": sample_counts},
     )
+
+
+@app.get("/voiceprints/{name}")
+def voiceprint_detail(request: Request, name: str):
+    data = load_voiceprint(VOICEPRINTS_DIR, name)
+    if not data["embeddings"]:
+        raise HTTPException(404, f"No voiceprint enrolled for '{name}'")
+
+    samples = [
+        {"index": i, "has_audio": audio is not None}
+        for i, audio in enumerate(data["audio_samples"])
+    ]
+
+    return templates.TemplateResponse(
+        request, "voiceprint_detail.html", {"name": name, "samples": samples}
+    )
+
+
+@app.get("/voiceprints/{name}/audio/{index}")
+def voiceprint_audio(name: str, index: int):
+    data = load_voiceprint(VOICEPRINTS_DIR, name)
+    if index < 0 or index >= len(data["audio_samples"]) or data["audio_samples"][index] is None:
+        raise HTTPException(404, "No audio stored for this sample")
+
+    path = Path(VOICEPRINTS_DIR) / data["audio_samples"][index]
+    return FileResponse(path, media_type="audio/wav")
