@@ -42,18 +42,21 @@ def identify_clusters(
     speaker_timeline: list[dict],
     voiceprints_dir: str,
     threshold: float = DEFAULT_THRESHOLD,
-) -> list[dict]:
-    """Relabel clustered speaker segments with enrolled names where confident.
+) -> tuple[list[dict], dict[str, dict]]:
+    """Match each cluster (e.g. "Speaker_1") against enrolled voiceprints.
 
-    Each cluster (e.g. "Speaker_1") is matched as a whole, using the average
-    embedding of all its segments, rather than segment-by-segment — a
-    per-meeting cluster gives a cleaner voiceprint than any single short
-    segment. "Speaker_multiple" segments are left untouched. Clusters with no
-    confident match keep their generic label.
+    Each cluster is matched as a whole, using the average embedding of all
+    its segments, rather than segment-by-segment — a per-meeting cluster
+    gives a cleaner voiceprint than any single short segment.
+    "Speaker_multiple" segments are left untouched.
+
+    Returns (relabeled_timeline, cluster_info), where cluster_info maps each
+    original cluster label to {"name": matched_name_or_None, "score": float,
+    "embeddings": [[...], ...]}. The raw embeddings are included so unmatched
+    clusters (new, unenrolled speakers) can be enrolled on the spot without
+    re-extracting audio.
     """
     centroids = load_all_centroids(voiceprints_dir)
-    if not centroids:
-        return speaker_timeline
 
     identifiable = [s for s in speaker_timeline if s["speaker"] != "Speaker_multiple"]
     embeddings = extract_embeddings(wav_path, identifiable)
@@ -62,14 +65,17 @@ def identify_clusters(
     for segment, embedding in zip(identifiable, embeddings):
         by_cluster.setdefault(segment["speaker"], []).append(embedding["embedding"])
 
+    cluster_info = {}
     cluster_to_name = {}
     for cluster, vectors in by_cluster.items():
-        cluster_centroid = np.array(vectors).mean(axis=0)
-        name, _score = match_embedding(cluster_centroid.tolist(), centroids, threshold)
+        centroid = np.array(vectors).mean(axis=0)
+        name, score = match_embedding(centroid.tolist(), centroids, threshold)
+        cluster_info[cluster] = {"name": name, "score": score, "embeddings": vectors}
         if name:
             cluster_to_name[cluster] = name
 
-    return [
+    relabeled = [
         {**segment, "speaker": cluster_to_name.get(segment["speaker"], segment["speaker"])}
         for segment in speaker_timeline
     ]
+    return relabeled, cluster_info

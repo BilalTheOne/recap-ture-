@@ -2,8 +2,8 @@
 
 Usage:
     python main.py run <recording> [<transcript>] [--speakers N] [--speaker-map FILE]
-        [--voiceprints-dir DIR] [--identify-threshold T] [--whisper-model SIZE]
-        [--distance-threshold T] --out OUTPUT_DIR
+        [--voiceprints-dir DIR] [--identify-threshold T] [--interactive-enroll]
+        [--whisper-model SIZE] [--distance-threshold T] --out OUTPUT_DIR
 
     python main.py enroll <recording> --speakers N --speaker-map FILE
         --voiceprints-dir DIR
@@ -11,6 +11,11 @@ Usage:
 If <transcript> is omitted, one is generated automatically from the audio
 using Whisper. If --speakers is omitted, the speaker count is estimated via
 distance-threshold clustering instead of a known fixed count.
+
+With --voiceprints-dir and --interactive-enroll, any speaker cluster that
+doesn't match an existing voiceprint is presented for naming on the spot;
+naming them enrolls their voice so future recordings recognize them
+automatically without needing a --speaker-map.
 """
 
 import argparse
@@ -36,6 +41,7 @@ from transcript.transcribe import transcribe_audio
 
 from biometrics.enroll import enroll_from_meeting
 from biometrics.identify import DEFAULT_THRESHOLD, identify_clusters
+from biometrics.store import add_embeddings
 
 
 def convert_to_wav(recording_path: str, wav_path: str) -> None:
@@ -78,6 +84,7 @@ def run_pipeline(
     identify_threshold: float = DEFAULT_THRESHOLD,
     whisper_model: str = "base",
     distance_threshold: float = DEFAULT_DISTANCE_THRESHOLD,
+    interactive_enroll: bool = False,
 ) -> None:
     if n_speakers is None:
         print(
@@ -95,9 +102,32 @@ def run_pipeline(
     speaker_timeline = build_speaker_timeline(wav_path, n_speakers, distance_threshold)
 
     if voiceprints_dir:
-        speaker_timeline = identify_clusters(
+        speaker_timeline, cluster_info = identify_clusters(
             wav_path, speaker_timeline, voiceprints_dir, identify_threshold
         )
+
+        if interactive_enroll:
+            renames = {}
+            for cluster, info in cluster_info.items():
+                if info["name"] is not None:
+                    continue
+                print(
+                    f"New speaker detected ({cluster}, {len(info['embeddings'])} "
+                    f"segments, best match score {info['score']:.2f})"
+                )
+                name = input(
+                    "Enter a name to enroll this speaker, or press Enter to skip: "
+                ).strip()
+                if name:
+                    add_embeddings(voiceprints_dir, name, info["embeddings"])
+                    renames[cluster] = name
+
+            if renames:
+                speaker_timeline = [
+                    {**s, "speaker": renames.get(s["speaker"], s["speaker"])}
+                    for s in speaker_timeline
+                ]
+
         speaker_timeline = merge_consecutive_segments(speaker_timeline)
 
     if transcript_path:
@@ -190,6 +220,13 @@ def main() -> None:
         default=DEFAULT_THRESHOLD,
         help="Cosine similarity threshold required to accept a biometric match",
     )
+    run_parser.add_argument(
+        "--interactive-enroll",
+        action="store_true",
+        help="When used with --voiceprints-dir, prompt to name and enroll any "
+        "speaker cluster that doesn't match an existing voiceprint, so they're "
+        "recognized automatically in future recordings",
+    )
 
     enroll_parser = subparsers.add_parser(
         "enroll", help="Enroll speaker voiceprints from a meeting with a known speaker map"
@@ -216,6 +253,7 @@ def main() -> None:
             identify_threshold=args.identify_threshold,
             whisper_model=args.whisper_model,
             distance_threshold=args.distance_threshold,
+            interactive_enroll=args.interactive_enroll,
         )
     elif args.command == "enroll":
         enroll_pipeline(
