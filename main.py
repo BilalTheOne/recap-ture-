@@ -1,11 +1,15 @@
 """Teams meeting speaker attribution pipeline.
 
 Usage:
-    python main.py run <recording> <transcript> --speakers N [--speaker-map FILE]
-        [--voiceprints-dir DIR] [--identify-threshold T] --out OUTPUT_DIR
+    python main.py run <recording> [<transcript>] --speakers N [--speaker-map FILE]
+        [--voiceprints-dir DIR] [--identify-threshold T] [--whisper-model SIZE]
+        --out OUTPUT_DIR
 
     python main.py enroll <recording> --speakers N --speaker-map FILE
         --voiceprints-dir DIR
+
+If <transcript> is omitted, one is generated automatically from the audio
+using Whisper.
 """
 
 import argparse
@@ -23,6 +27,7 @@ from export.to_vtt import export_vtt
 from transcript.align import assign_speakers
 from transcript.parser import parse_transcript
 from transcript.speaker_map import apply_speaker_map, load_speaker_map
+from transcript.transcribe import transcribe_audio
 
 from biometrics.enroll import enroll_from_meeting
 from biometrics.identify import DEFAULT_THRESHOLD, identify_clusters
@@ -56,12 +61,13 @@ def build_speaker_timeline(wav_path: str, n_speakers: int) -> list[dict]:
 
 def run_pipeline(
     recording_path: str,
-    transcript_path: str,
+    transcript_path: str | None,
     n_speakers: int,
     speaker_map_path: str | None,
     out_dir: str,
     voiceprints_dir: str | None = None,
     identify_threshold: float = DEFAULT_THRESHOLD,
+    whisper_model: str = "base",
 ) -> None:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -77,7 +83,11 @@ def run_pipeline(
         )
         speaker_timeline = merge_consecutive_segments(speaker_timeline)
 
-    transcript_lines = parse_transcript(transcript_path)
+    if transcript_path:
+        transcript_lines = parse_transcript(transcript_path)
+    else:
+        transcript_lines = transcribe_audio(wav_path, whisper_model)
+
     labeled_lines = assign_speakers(transcript_lines, speaker_timeline)
 
     speaker_map = load_speaker_map(speaker_map_path)
@@ -120,8 +130,20 @@ def main() -> None:
 
     run_parser = subparsers.add_parser("run", help="Run the full speaker attribution pipeline")
     run_parser.add_argument("recording", help="Path to meeting recording (mp4/wav/m4a)")
-    run_parser.add_argument("transcript", help="Path to Teams transcript (vtt/txt/json/docx)")
+    run_parser.add_argument(
+        "transcript",
+        nargs="?",
+        default=None,
+        help="Path to existing transcript (vtt/txt/json/docx). If omitted, one is "
+        "generated automatically from the audio using Whisper.",
+    )
     run_parser.add_argument("--speakers", type=int, required=True, help="Known number of speakers")
+    run_parser.add_argument(
+        "--whisper-model",
+        default="base",
+        help="faster-whisper model size to use when auto-generating a transcript "
+        "(tiny/base/small/medium/large-v3)",
+    )
     run_parser.add_argument("--speaker-map", default=None, help="Optional speaker name mapping JSON")
     run_parser.add_argument("--out", default="output", help="Output directory")
     run_parser.add_argument(
@@ -159,6 +181,7 @@ def main() -> None:
             out_dir=args.out,
             voiceprints_dir=args.voiceprints_dir,
             identify_threshold=args.identify_threshold,
+            whisper_model=args.whisper_model,
         )
     elif args.command == "enroll":
         enroll_pipeline(
