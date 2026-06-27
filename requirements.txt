@@ -1,0 +1,9 @@
+torch
+torchaudio
+silero-vad
+speechbrain
+pyannote.audio
+scikit-learn
+numpy
+webvtt-py
+python-docx

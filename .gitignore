@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+
+# Real meeting recordings/transcripts and generated artifacts — not checked into git
+input/recordings/*
+input/transcripts/*
+input/speaker_maps/*
+!input/**/.gitkeep
+output/**/*
+!output/**/.gitkeep
+
+# Voiceprint data may contain biometric data tied to real people
+voiceprints/
