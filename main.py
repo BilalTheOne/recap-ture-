@@ -16,62 +16,20 @@ With --voiceprints-dir and --interactive-enroll, any speaker cluster that
 doesn't match an existing voiceprint is presented for naming on the spot;
 naming them enrolls their voice so future recordings recognize them
 automatically without needing a --speaker-map.
+
+For a browser-based alternative to this CLI, see webapp/app.py.
 """
 
 import argparse
-import subprocess
+import tempfile
 from pathlib import Path
 
-from diarization.clustering import (
-    DEFAULT_DISTANCE_THRESHOLD,
-    cluster_speakers,
-    merge_consecutive_segments,
-)
-from diarization.embeddings import extract_embeddings
-from diarization.overlap import detect_overlaps, split_segments_by_overlap
-from diarization.vad import detect_speech_segments
-from export.to_docx import export_docx
-from export.to_json import export_json
-from export.to_markdown import export_markdown
-from export.to_vtt import export_vtt
-from transcript.align import assign_speakers
-from transcript.parser import parse_transcript
-from transcript.speaker_map import apply_speaker_map, load_speaker_map
-from transcript.transcribe import transcribe_audio
+import pipeline
+from transcript.speaker_map import load_speaker_map
 
 from biometrics.enroll import enroll_from_meeting
-from biometrics.identify import DEFAULT_THRESHOLD, identify_clusters
+from biometrics.identify import DEFAULT_THRESHOLD
 from biometrics.store import add_embeddings
-
-
-def convert_to_wav(recording_path: str, wav_path: str) -> None:
-    subprocess.run(
-        ["ffmpeg", "-y", "-i", recording_path, "-ar", "16000", "-ac", "1", wav_path],
-        check=True,
-    )
-
-
-def build_speaker_timeline(
-    wav_path: str,
-    n_speakers: int | None,
-    distance_threshold: float = DEFAULT_DISTANCE_THRESHOLD,
-) -> list[dict]:
-    speech_segments = detect_speech_segments(wav_path)
-    overlaps = detect_overlaps(wav_path)
-    clean_segments, overlapping_segments = split_segments_by_overlap(
-        speech_segments, overlaps
-    )
-
-    embeddings = extract_embeddings(wav_path, clean_segments)
-    clustered = cluster_speakers(clean_segments, embeddings, n_speakers, distance_threshold)
-
-    multiple = [
-        {"start": s["start"], "end": s["end"], "speaker": "Speaker_multiple"}
-        for s in overlapping_segments
-    ]
-
-    timeline = sorted(clustered + multiple, key=lambda s: s["start"])
-    return merge_consecutive_segments(timeline)
 
 
 def run_pipeline(
@@ -83,7 +41,7 @@ def run_pipeline(
     voiceprints_dir: str | None = None,
     identify_threshold: float = DEFAULT_THRESHOLD,
     whisper_model: str = "base",
-    distance_threshold: float = DEFAULT_DISTANCE_THRESHOLD,
+    distance_threshold: float = pipeline.DEFAULT_DISTANCE_THRESHOLD,
     interactive_enroll: bool = False,
 ) -> None:
     if n_speakers is None:
@@ -93,16 +51,16 @@ def run_pipeline(
             "wildly wrong speaker counts. Prefer passing --speakers explicitly."
         )
 
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = Path(out_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
 
-    wav_path = str(out_dir / "meeting.wav")
-    convert_to_wav(recording_path, wav_path)
+    wav_path = str(out_path / "meeting.wav")
+    pipeline.convert_to_wav(recording_path, wav_path)
 
-    speaker_timeline = build_speaker_timeline(wav_path, n_speakers, distance_threshold)
+    speaker_timeline = pipeline.build_speaker_timeline(wav_path, n_speakers, distance_threshold)
 
     if voiceprints_dir:
-        speaker_timeline, cluster_info = identify_clusters(
+        speaker_timeline, cluster_info = pipeline.identify_speakers(
             wav_path, speaker_timeline, voiceprints_dir, identify_threshold
         )
 
@@ -123,27 +81,16 @@ def run_pipeline(
                     renames[cluster] = name
 
             if renames:
-                speaker_timeline = [
-                    {**s, "speaker": renames.get(s["speaker"], s["speaker"])}
-                    for s in speaker_timeline
-                ]
+                speaker_timeline = pipeline.apply_cluster_renames(speaker_timeline, renames)
+        else:
+            from diarization.clustering import merge_consecutive_segments
 
-        speaker_timeline = merge_consecutive_segments(speaker_timeline)
+            speaker_timeline = merge_consecutive_segments(speaker_timeline)
 
-    if transcript_path:
-        transcript_lines = parse_transcript(transcript_path)
-    else:
-        transcript_lines = transcribe_audio(wav_path, whisper_model)
-
-    labeled_lines = assign_speakers(transcript_lines, speaker_timeline)
+    transcript_lines = pipeline.get_transcript_lines(wav_path, transcript_path, whisper_model)
 
     speaker_map = load_speaker_map(speaker_map_path)
-    final_lines = apply_speaker_map(labeled_lines, speaker_map)
-
-    export_json(final_lines, str(out_dir / "transcript.json"))
-    export_markdown(final_lines, str(out_dir / "transcript.md"))
-    export_docx(final_lines, str(out_dir / "transcript.docx"))
-    export_vtt(final_lines, str(out_dir / "transcript.vtt"))
+    pipeline.finalize_and_export(transcript_lines, speaker_timeline, speaker_map, out_dir)
 
 
 def enroll_pipeline(
@@ -152,17 +99,15 @@ def enroll_pipeline(
     speaker_map_path: str,
     voiceprints_dir: str,
 ) -> None:
-    import tempfile
-
     speaker_map = load_speaker_map(speaker_map_path)
     if not speaker_map:
         raise ValueError("--speaker-map is required for enrollment (need names to enroll)")
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         wav_path = str(Path(tmp_dir) / "meeting.wav")
-        convert_to_wav(recording_path, wav_path)
+        pipeline.convert_to_wav(recording_path, wav_path)
 
-        speaker_timeline = build_speaker_timeline(wav_path, n_speakers)
+        speaker_timeline = pipeline.build_speaker_timeline(wav_path, n_speakers)
         enrolled = enroll_from_meeting(wav_path, speaker_timeline, speaker_map, voiceprints_dir)
 
     for name, count in enrolled.items():
@@ -196,7 +141,7 @@ def main() -> None:
     run_parser.add_argument(
         "--distance-threshold",
         type=float,
-        default=DEFAULT_DISTANCE_THRESHOLD,
+        default=pipeline.DEFAULT_DISTANCE_THRESHOLD,
         help="Cosine distance threshold used to estimate speaker count when "
         "--speakers is omitted (lower = more, smaller clusters). No single "
         "value has been found to work reliably across recordings.",

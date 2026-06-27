@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Name new speakers — {{ job_id }}</title>
+  <style>
+    body { font-family: sans-serif; max-width: 640px; margin: 40px auto; }
+    .cluster { margin-top: 20px; padding: 12px; border: 1px solid #ccc; border-radius: 6px; }
+    label { display: block; font-weight: bold; }
+    input { width: 100%; padding: 6px; margin-top: 6px; box-sizing: border-box; }
+    button { margin-top: 24px; padding: 10px 20px; }
+  </style>
+</head>
+<body>
+  <h1>New speakers detected</h1>
+  <p>These voices didn't match anyone already enrolled. Name them to enroll their
+     voice — future recordings will recognize them automatically. Leave blank to
+     keep a generic label for this recording only.</p>
+  <form action="/jobs/{{ job_id }}/names" method="post">
+    {% for cluster in clusters %}
+    <div class="cluster">
+      <label>{{ cluster.label }} — {{ cluster.segments }} segment(s), best match score {{ "%.2f"|format(cluster.score) }}</label>
+      <input type="text" name="name__{{ cluster.label }}" placeholder="e.g. Ahmed">
+    </div>
+    {% endfor %}
+    <button type="submit">Save names and continue</button>
+  </form>
+</body>
+</html>

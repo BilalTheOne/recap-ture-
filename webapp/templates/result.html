@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Result — {{ job_id }}</title>
+  <style>
+    body { font-family: sans-serif; max-width: 720px; margin: 40px auto; }
+    .line { margin-bottom: 14px; }
+    .speaker { font-weight: bold; }
+    .downloads a { margin-right: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Transcript ready</h1>
+  <p class="downloads">
+    Download:
+    <a href="/jobs/{{ job_id }}/download/json">JSON</a>
+    <a href="/jobs/{{ job_id }}/download/md">Markdown</a>
+    <a href="/jobs/{{ job_id }}/download/docx">DOCX</a>
+    <a href="/jobs/{{ job_id }}/download/vtt">VTT</a>
+  </p>
+  <hr>
+  {% for line in lines %}
+  <div class="line">
+    <span class="speaker">{{ line.speaker }}:</span> {{ line.text }}
+  </div>
+  {% endfor %}
+  <p><a href="/">Process another</a></p>
+</body>
+</html>

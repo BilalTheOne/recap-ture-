@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Processing — {{ job_id }}</title>
+  {% if status != "error" %}
+  <meta http-equiv="refresh" content="3">
+  {% endif %}
+  <style>
+    body { font-family: sans-serif; max-width: 640px; margin: 40px auto; }
+    .error { color: #b00020; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Job {{ job_id }}</h1>
+  {% if status == "error" %}
+    <p class="error">Failed: {{ error }}</p>
+  {% else %}
+    <p>Status: <strong>{{ status }}</strong> — this page refreshes automatically.</p>
+  {% endif %}
+  <p><a href="/">Start another</a></p>
+</body>
+</html>

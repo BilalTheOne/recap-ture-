@@ -9,3 +9,7 @@ numpy
 webvtt-py
 python-docx
 faster-whisper
+fastapi
+uvicorn
+jinja2
+python-multipart
