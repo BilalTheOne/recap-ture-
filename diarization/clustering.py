@@ -1,24 +1,46 @@
 """Cluster speaker embeddings into speaker labels.
 
-The number of speakers is a known input per meeting (not estimated), so
-clustering uses a fixed `n_clusters` rather than a distance threshold.
+The number of speakers is normally provided as a known input per meeting
+(not estimated), since that removes the need for distance-threshold
+clustering — a major source of instability. When it isn't provided, a
+cosine distance threshold is used to estimate the speaker count instead;
+this is inherently less reliable and may need tuning per recording.
 """
 
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 
+DEFAULT_DISTANCE_THRESHOLD = 0.6
+
 
 def cluster_speakers(
-    segments: list[dict], embeddings: list[dict], n_speakers: int
+    segments: list[dict],
+    embeddings: list[dict],
+    n_speakers: int | None = None,
+    distance_threshold: float = DEFAULT_DISTANCE_THRESHOLD,
 ) -> list[dict]:
     """Assign a "Speaker_N" label to each segment based on its embedding.
 
     `segments` and `embeddings` must be aligned by index (same order as
     produced by `embeddings.extract_embeddings`).
+
+    If `n_speakers` is given, clustering uses that fixed count. Otherwise,
+    the speaker count is estimated by cutting the hierarchical clustering
+    tree at `distance_threshold` (cosine distance) — an approximation that
+    can split or merge speakers incorrectly if the threshold doesn't suit
+    the recording.
     """
     vectors = np.array([e["embedding"] for e in embeddings])
 
-    clustering = AgglomerativeClustering(n_clusters=n_speakers)
+    if n_speakers is not None:
+        clustering = AgglomerativeClustering(n_clusters=n_speakers)
+    else:
+        clustering = AgglomerativeClustering(
+            n_clusters=None,
+            distance_threshold=distance_threshold,
+            metric="cosine",
+            linkage="average",
+        )
     labels = clustering.fit_predict(vectors)
 
     return [

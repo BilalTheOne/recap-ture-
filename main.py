@@ -1,22 +1,27 @@
 """Teams meeting speaker attribution pipeline.
 
 Usage:
-    python main.py run <recording> [<transcript>] --speakers N [--speaker-map FILE]
+    python main.py run <recording> [<transcript>] [--speakers N] [--speaker-map FILE]
         [--voiceprints-dir DIR] [--identify-threshold T] [--whisper-model SIZE]
-        --out OUTPUT_DIR
+        [--distance-threshold T] --out OUTPUT_DIR
 
     python main.py enroll <recording> --speakers N --speaker-map FILE
         --voiceprints-dir DIR
 
 If <transcript> is omitted, one is generated automatically from the audio
-using Whisper.
+using Whisper. If --speakers is omitted, the speaker count is estimated via
+distance-threshold clustering instead of a known fixed count.
 """
 
 import argparse
 import subprocess
 from pathlib import Path
 
-from diarization.clustering import cluster_speakers, merge_consecutive_segments
+from diarization.clustering import (
+    DEFAULT_DISTANCE_THRESHOLD,
+    cluster_speakers,
+    merge_consecutive_segments,
+)
 from diarization.embeddings import extract_embeddings
 from diarization.overlap import detect_overlaps, split_segments_by_overlap
 from diarization.vad import detect_speech_segments
@@ -40,7 +45,11 @@ def convert_to_wav(recording_path: str, wav_path: str) -> None:
     )
 
 
-def build_speaker_timeline(wav_path: str, n_speakers: int) -> list[dict]:
+def build_speaker_timeline(
+    wav_path: str,
+    n_speakers: int | None,
+    distance_threshold: float = DEFAULT_DISTANCE_THRESHOLD,
+) -> list[dict]:
     speech_segments = detect_speech_segments(wav_path)
     overlaps = detect_overlaps(wav_path)
     clean_segments, overlapping_segments = split_segments_by_overlap(
@@ -48,7 +57,7 @@ def build_speaker_timeline(wav_path: str, n_speakers: int) -> list[dict]:
     )
 
     embeddings = extract_embeddings(wav_path, clean_segments)
-    clustered = cluster_speakers(clean_segments, embeddings, n_speakers)
+    clustered = cluster_speakers(clean_segments, embeddings, n_speakers, distance_threshold)
 
     multiple = [
         {"start": s["start"], "end": s["end"], "speaker": "Speaker_multiple"}
@@ -62,12 +71,13 @@ def build_speaker_timeline(wav_path: str, n_speakers: int) -> list[dict]:
 def run_pipeline(
     recording_path: str,
     transcript_path: str | None,
-    n_speakers: int,
+    n_speakers: int | None,
     speaker_map_path: str | None,
     out_dir: str,
     voiceprints_dir: str | None = None,
     identify_threshold: float = DEFAULT_THRESHOLD,
     whisper_model: str = "base",
+    distance_threshold: float = DEFAULT_DISTANCE_THRESHOLD,
 ) -> None:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -75,7 +85,7 @@ def run_pipeline(
     wav_path = str(out_dir / "meeting.wav")
     convert_to_wav(recording_path, wav_path)
 
-    speaker_timeline = build_speaker_timeline(wav_path, n_speakers)
+    speaker_timeline = build_speaker_timeline(wav_path, n_speakers, distance_threshold)
 
     if voiceprints_dir:
         speaker_timeline = identify_clusters(
@@ -137,7 +147,20 @@ def main() -> None:
         help="Path to existing transcript (vtt/txt/json/docx). If omitted, one is "
         "generated automatically from the audio using Whisper.",
     )
-    run_parser.add_argument("--speakers", type=int, required=True, help="Known number of speakers")
+    run_parser.add_argument(
+        "--speakers",
+        type=int,
+        default=None,
+        help="Known number of speakers. If omitted, the speaker count is "
+        "estimated via distance-threshold clustering, which is less reliable.",
+    )
+    run_parser.add_argument(
+        "--distance-threshold",
+        type=float,
+        default=DEFAULT_DISTANCE_THRESHOLD,
+        help="Cosine distance threshold used to estimate speaker count when "
+        "--speakers is omitted (lower = more, smaller clusters)",
+    )
     run_parser.add_argument(
         "--whisper-model",
         default="base",
@@ -182,6 +205,7 @@ def main() -> None:
             voiceprints_dir=args.voiceprints_dir,
             identify_threshold=args.identify_threshold,
             whisper_model=args.whisper_model,
+            distance_threshold=args.distance_threshold,
         )
     elif args.command == "enroll":
         enroll_pipeline(
