@@ -41,6 +41,22 @@ def add_embeddings(voiceprints_dir: str, name: str, new_embeddings: list[list[fl
     save_voiceprint(voiceprints_dir, name, existing["embeddings"])
 
 
+def load_all_voiceprints(voiceprints_dir: str) -> dict[str, list[list[float]]]:
+    """Return {name: raw_embeddings} for every enrolled person."""
+    voiceprints = {}
+    voiceprints_path = Path(voiceprints_dir)
+    if not voiceprints_path.exists():
+        return voiceprints
+
+    for path in voiceprints_path.glob("*.json"):
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        if data["embeddings"]:
+            voiceprints[data["name"]] = data["embeddings"]
+
+    return voiceprints
+
+
 def load_all_centroids(voiceprints_dir: str) -> dict[str, np.ndarray]:
     """Return {name: centroid_embedding} for every enrolled person."""
     centroids = {}

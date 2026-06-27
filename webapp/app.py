@@ -15,15 +15,17 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sklearn.decomposition import PCA
 
 import pipeline
 from diarization.clustering import merge_consecutive_segments
 
-from biometrics.store import add_embeddings
+from biometrics.store import add_embeddings, load_all_voiceprints
 
 VOICEPRINTS_DIR = "voiceprints"
 JOBS_DIR = Path("output/web")
@@ -191,3 +193,27 @@ def download(job_id: str, fmt: str):
     job = jobs[job_id]
     path = job.out_dir / f"transcript.{fmt}"
     return FileResponse(path, filename=path.name)
+
+
+@app.get("/voiceprints")
+def voiceprints_page(request: Request):
+    voiceprints = load_all_voiceprints(VOICEPRINTS_DIR)
+
+    sample_counts = {name: len(embeddings) for name, embeddings in voiceprints.items()}
+
+    points = []
+    names, vectors = [], []
+    for name, embeddings in voiceprints.items():
+        for embedding in embeddings:
+            names.append(name)
+            vectors.append(embedding)
+
+    if len(vectors) >= 2:
+        reduced = PCA(n_components=2).fit_transform(np.array(vectors))
+        points = [{"x": float(x), "y": float(y), "name": n} for (x, y), n in zip(reduced, names)]
+
+    return templates.TemplateResponse(
+        request,
+        "voiceprints.html",
+        {"points": points, "sample_counts": sample_counts},
+    )

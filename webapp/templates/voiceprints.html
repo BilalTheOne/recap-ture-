@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Enrolled voices — Recap-ture{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Enrolled voices</h1>
+  {% if not sample_counts %}
+    <p class="muted">No voiceprints enrolled yet. Process a recording with voice biometrics
+       enabled and name any new speaker to enroll them.</p>
+  {% else %}
+    <p class="muted">Each point is one stored voice sample, projected from its 192-dimension
+       embedding down to 2D via PCA. Tightly grouped, well-separated clusters mean the
+       enrolled voices are easy to distinguish; overlapping clusters mean two people's
+       voices look similar to the model and may get misidentified.</p>
+    <canvas id="scatter" height="220"></canvas>
+    <div class="legend" id="legend"></div>
+
+    <h2>Sample counts</h2>
+    <table>
+      <tr><th>Name</th><th>Samples</th></tr>
+      {% for name, count in sample_counts.items() %}
+      <tr><td>{{ name }}</td><td>{{ count }}</td></tr>
+      {% endfor %}
+    </table>
+  {% endif %}
+</div>
+
+{% if sample_counts %}
+<script>
+  const points = {{ points | tojson }};
+  const names = [...new Set(points.map(p => p.name))];
+  const palette = ["#6c8cff", "#ff7a7a", "#4cd6a8", "#ffc16c", "#c08cff", "#6cd1ff", "#ff8cd1"];
+  const colorFor = (name) => palette[names.indexOf(name) % palette.length];
+
+  document.getElementById("legend").innerHTML = names.map(
+    n => `<span class="legend-item"><span class="legend-dot" style="background:${colorFor(n)}"></span>${n}</span>`
+  ).join("");
+
+  new Chart(document.getElementById("scatter"), {
+    type: "scatter",
+    data: {
+      datasets: names.map(name => ({
+        label: name,
+        data: points.filter(p => p.name === name).map(p => ({ x: p.x, y: p.y })),
+        backgroundColor: colorFor(name),
+      })),
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: "#9aa1ad" }, grid: { color: "#2c313c" } },
+        y: { ticks: { color: "#9aa1ad" }, grid: { color: "#2c313c" } },
+      },
+    },
+  });
+</script>
+{% endif %}
+{% endblock %}
